@@ -1,0 +1,52 @@
+# .github/workflows/release-aot.yml
+name: Build and Release AOT App
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  PROJECT_NAME: 'GeoIpApi'
+  TARGET_RID: 'linux-x64'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: 提取项目版本 (用于输出文件名)
+        id: get_version
+        run: echo "APP_VERSION=${GITHUB_REF_NAME#refs/tags/}" >> $GITHUB_ENV
+
+      - name: 发布 AOT 应用
+        run: dotnet publish ${{ env.PROJECT_NAME }}.csproj -c Release -r ${{ env.TARGET_RID }} --self-contained true /p:PublishAot=true -o ./publish_output
+
+      - name: 准备构建产物名称
+        id: artifact_details
+        run: |
+          ARTIFACT_FILENAME="${{ env.PROJECT_NAME }}-${{ env.APP_VERSION }}-${{ env.TARGET_RID }}.tar.gz"
+          echo "ARTIFACT_FILENAME=${ARTIFACT_FILENAME}" >> $GITHUB_ENV
+          echo "ARTIFACT_PATH=./${ARTIFACT_FILENAME}" >> $GITHUB_ENV
+          echo "PUBLISH_DIR=./publish_output" >> $GITHUB_ENV
+
+      - name: 打包构建产物 (tar.gz)
+        run: tar -czvf ${{ env.ARTIFACT_FILENAME }} -C ${{ env.PUBLISH_DIR }} .
+
+      - name: 创建 GitHub Release 并上传构建产物
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARTIFACT_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
